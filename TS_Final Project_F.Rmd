@@ -1,0 +1,388 @@
+---
+title: "Forecasting Bankruptcy Rates"
+author: "Valerie Amoroso & Lin Chen"
+date: "December 10, 2016"
+output:
+ pdf_document:
+   toc: true
+   toc_depth: 2
+   fig_caption: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(forecast)
+library(vars)
+library(tseries)
+library(car)
+library(lmtest)
+library(knitr)
+
+```
+
+```{r echo = FALSE}
+setwd("/Users/ValerieAmoroso/Desktop/Time_Series/TS_Project")
+
+## Read train and test data
+train <- read.csv("train.csv", header=T)
+test <- read.csv("test.csv", header=T)
+
+## train: 1987-2010; test: 2011-2012
+Unemployment_Rate.train <- ts(train$Unemployment_Rate, start = c(1987, 1), frequency = 12)
+Population.train<- ts(train$Population, start = c(1987, 1), frequency = 12)
+Bankruptcy_Rate.train <- ts(train$Bankruptcy_Rate, start = c(1987, 1), frequency = 12)
+House_Price_Index.train <- ts(train$House_Price_Index, start = c(1987, 1), frequency = 12)
+
+Unemployment_Rate.test <- ts(test$Unemployment_Rate, start = c(2011, 1), frequency = 12)
+Population.test <- ts(test$Population, start = c(2011, 1), frequency = 12)
+House_Price_Index.test <- ts(test$House_Price_Index, start = c(2011, 1), frequency = 12)
+
+
+## split the training data into mytrain and validate 80-20 (mytrain: 1987-2005; validate: 2006-2010)
+mytrain <- train[1:228, ]
+validate <- train[229:288, ]
+Unemployment_Rate.mytrain <- ts(mytrain$Unemployment_Rate, start = c(1987, 1), frequency = 12)
+Population.mytrain<- ts(mytrain$Population, start = c(1987, 1), frequency = 12)
+Bankruptcy_Rate.mytrain <- ts(mytrain$Bankruptcy_Rate, start = c(1987, 1), frequency = 12)
+House_Price_Index.mytrain <- ts(mytrain$House_Price_Index, start = c(1987, 1), frequency = 12)
+
+Unemployment_Rate.validate <- ts(validate$Unemployment_Rate, start = c(2006, 1), frequency = 12)
+Population.validate<- ts(validate$Population, start = c(2006, 1), frequency = 12)
+Bankruptcy_Rate.validate <- ts(validate$Bankruptcy_Rate, start = c(2006, 1), frequency = 12)
+House_Price_Index.validate <- ts(validate$House_Price_Index, start = c(2006, 1), frequency = 12)
+
+
+## Plot the data
+## Trend
+## Seasonality
+# par(mfrow=c(2,2))
+# plot(Bankruptcy_Rate.train, main = "Bankruptcy_Rate training data")
+# plot(Unemployment_Rate.train, main = "Unemployment_Rate training data")
+# plot(Population.train, main = "Population training data")
+# plot(House_Price_Index.train, main = "House_Price_Index training data")
+
+```
+
+
+#Introduction
+
+One of the main interests of businesses across the world is to be able to accurately predict into the future. A business owner may want to predict what their sales will be for the next month so they can plan appropriate expenditures. A Wall Street analyst wishes to predict the rise and fall of stock prices.  A weatherman hopes to predict when the next storm will occur and where it will fall, to ensure the safety of communities.  All of these applications involve looking at data and trends from the past, and using that past data to make predictions into the future. When a set of data depends on time, it forms what is called a time series, and the science of making predictions and estimations into the future is known as forecasting.  
+
+The problem we are dealing with at hand is to precisely and accurately forecast bankrupty rates for Canada.  To do this, we are given four data points to consider: Unemployment Rate, Bankruptcy Rate, Population, and Housing Price Index.  The unemployment rate is a measure of the prevalence of unemployment, calculated by dividing the number of unemployed individuals by all individuals currently in the labor force.  The bankruptcy rate, which is the variable we wish to predict, refers to the rate of people who cannot repay the debts they owe to creditors and have had to file for bankruptcy. Population is the current number of people living in Canada, and housing price index measures the price changes of residential housing during a given time.
+
+For each of these variables, we have monthly data from January 1987 to December 2010.  Our goal is to use this data to create a time series model that will allow us to forcast into the future or make precise predictions about what the bankruptcy rates in Canada will be from January 2011 to December 2012.
+
+#Available Methods
+
+In order to forecast into the future, we need to first create an appropriate model that describes the inherent structure of the time series.  When creating a model, there are many available methods to consider. Typically as modelers, one of the first things to be considered is whether or not the raw data exhibits trend and seasonality.  In this case, we say that a trend exists when there is a long-term increase or decrease in the data. Seasonality refers to whether or not a seasonal pattern exists within a time series, i.e. is it influenced by seasonal factors such as the quarter or the year, the month, or the day of the week. Seasonality is always of a fixed or known period.
+
+Looking at an initial plot of bankruptcy data from from January 1987 - December 2010 it is appears that both trend and seasonality exist in our variable of question. 
+
+
+```{r echo= FALSE, fig.width = 6, fig.height = 4}
+par(mfrow = c(1,1))
+plot(Bankruptcy_Rate.train, main = "Bankruptcy Rates in Canada", ylab = 'Bankruptcy Rates')
+```
+
+
+Since trend and seasonality both seem to exist in the series in question, the following modeling approaches are then most common to explore: Classical Decomposition, SARIMA, SARIMAX, Holt-Winters, VAR.
+
+The idea behind each of these approaches will be described in more detail. 
+
+##Classical Decomposition Approach
+The goal of a decomposition approach is to construct from a given time series a number of component series where each of these components has a certain characteristic or type of behavior.  In our case, we have already seen that trend and seasonality are behaviors that exist in our series, so we could use these as components, and fit a  model including trend and seasonality and associated errors as components of our data. This is one of the most basic approaches in modeling a time series.
+
+##Holt-Winters
+
+Another common approach to modeling a time series is an Exponential Smoothing approach, called the Holt-Winters method.  Exponential smoothing works to smoothen data by applying what can be thought of as a filter that helps eliminate the "noise" in the way of error that is present in a time series.  When trend and seasonality seem to exist, as they do in our case, we use triple exponential smoothing to model the time series.  This triple exponential smoothing involves a set of recursive equations and parameters alpha, beta, and gamma which can be chosen or tuned according to the level of smoothing desired at each level. 
+
+Before moving on to the next method, it is important to discuss a few more modeling terms for clarity.  Let's first start with stationarity and differencing.  Recall mean refers to the average value of a set of data points and covariance is a measures of how much two variables vary together. We say that a time series is stationary when its statistical properites such as mean and covariance are all constant over time, i.e., they are independent of time. Differencing  refers to taking the value of a term at time t, and subtracting the value of that term one time point before (t-1).  Differencing can be done for both trend, called ordinary differencing, and seasonality, called seasonal differencing. Both are integral parts to upcoming approaches. 
+
+In order to bulid a model with any kind of accuracy and precision, we require the assumption that something doesn't vary with time.  For this reason, we have a class of models that we count on to adequately describe stationary time series', the most common being ARMA(p,q).  
+
+An ARMA model is actually the combination of an AR(p) and MA(q) models.  An AR(p) model essesentially uses the past p observations to predict today's observations.  An MA(q) model uses the past q errors to predict today's observation. Combining these we arrive at the ARMA(p,q) model that uses the past p observations and q associated errors to predict today's observation. So in our problem situation, if our original bankruptcy time series was stationary, we could use an ARMA(p,q) model to tell us how future bankruptcy rates are dependent on the p previous months bankruptcy rates and the past q errors associated with those rates.  However, in our case and in many problem cases, the time series in question will not initially be stationary, and thus will need to undergo a transformation to become stationary.  This is where differencing comes into play and brings us to the next common method of modeling.
+
+##SARIMA
+We use a SARIMA model when trend and seasonlity are present in a time series. A SARIMA model is an ARMA(p,q) model that takes into account the need to 'ordinary' difference for trend d times, and seasonal difference for seasonality D times.  Giving us a SARIMA(p,d,q)X(P,D,Q) model. Where P and Q in this case indicate how future bankruptcy rates are dependent on P previous seasons bankruptcy rates and the past Q seasonal errors associated with those rates.  Once we difference d times for trend and D times for seasonality, we are left with a stationary time series that can then be modeled with an ARMA model as described above. 
+
+##SARIMAX
+Until now, the models that have been described have been univariate times series; that is, we have only considered using previous bankruptcy rates to make predictions of future bankruptcy rates.  However, it is often possible that there are other variables present that are related with the one of primary interest (which we will call the response).
+
+This may be the case in our problem, as we have been given three other variables to consider when trying to predict bankruptcy rates.  Recall these include population, housing price index, and unemployment rate.
+
+There are two ways that we can treat these variables, as exogenous, or as endodgenous. With exogenous variables, we say that these variables influence the primary variable of interest, the response, but the response is not influenced by these variables. With endodgenous variables, the external variables influence the response and the response also influences the external variables as well. 
+
+A SARIMAX model is a model that includes and considers these external variables as exogenous variables, and thus takes into account the relationship that exists between the primary response variable and the external variables.  
+
+Since we have data for three external variables, it would be good practice to try and fit a a SARIMAX model that takes into account that population, housing price index, and/or unemployment rate may have an influence on bankruptcy rate in Canada.
+
+The SARIMAX model in particular still accounts for seasonality and trend and the need to difference to make the series stationary as SARIMA did.
+
+The only limitation of SARIMAX is that it requires the future values of the exogenous variables. Fortunately in this project, we had all the 2011-2012 data for exogenous variables. If we do not have these values, the prediction interval would be too narrow.
+
+
+##VAR (Vector Autoregression)
+
+Finally, similar to SARIMAX is the VAR method of modeling.  The difference between SARIMAX and VAR is that in VAR we treat all variables as endogenous - hence we assume that bankruptcy rates are affected by population, housing price index, and unemployment rate, AND that bankruptcy rate also has an influence on these variables as well.  Thus the VAR method is good for capturing the inter-dependencies between the different time series models.
+
+
+#Our Method & Results
+
+When searching for the best model to solve this problem, we tried using all of the methods listed above.  In each case we first split the data into two sections, a training set and a validation set.  This is a common practice when trying to predict into the future, as there is no metric that can be used to know how close your predictions are, since the future observations have not yet occured.  To remedy this, we keep the first 80% of the observed data as the training set, which is used to build our model, and the last 20% of our observed data becomes the validation set, which is used to measure how well the model was able to predict by comparing the predictions to actual observations.  One of the most frequent metrics used in quantifying a models predictive power is called the Root Mean Squared Error, or RMSE. RMSE is a measure of the differences between the predicted values and observed values.  Thus if the model that was created has good predictive power, we would expect the predictions to be close to the actual observations during that time period, and thus our RMSE would be low.  In searching for the best model, we used RMSE as our main metric of comparision, also taking into consideration the variance and model complexity. We found the optimized model for each approach. The RMSE table and the prediction graph of each approach was attached at the Appendix.
+
+
+After trying each approach, the model that we found to make the most accurate and precise predictions was a SARIMAX model. Recall that in a SARIMAX model, we acknowledge that external variables are influencing our primary variable of interest, though initially we are not sure which ones. Since we had data for three external variables, population, housing price index, and unemployment rate, we first plotted these variables along with bankruptcy rate to see if it appeared there was a relationship over time.
+
+```{r echo = FALSE}
+par(mfrow=c(2,2))
+plot(Bankruptcy_Rate.train, main = "Bankruptcy Rate", ylab = "Bankruptcy Rate")
+plot(Unemployment_Rate.train, main = "Unemployment Rate", ylab = "Unemployment Rate")
+plot(Population.train, main = "Population", ylab = "Population")
+plot(House_Price_Index.train, main = "House Price Index", ylab = "House Price Index")
+```
+
+
+
+What we noticed was that it appeared that the trends of all three variables were related to the bankruptcy rate.  That is, as unemployment rate dropped, bankruptcy rate rose, and as housing price index rose, bankruptcy rate rose.  The only variable in question was population.  While population also increased over time, this increase was very linear, so it was hard to distinguish if this rising population was actually affecting bankruptcy rate, or just happened to have a simiar trend over time.
+
+To evaluate whether or not this was the case, we created a variety of SARIMAX(p,d,q)x(P,D,Q) models, both including population as an external variable, and also not.  We created a loop and cycled through a variety of models with different orders, where the order of a model refers to the values we will choose for p, P, q, Q, d, and D.  We recorded the RMSE for each model and narrowed our choices down to the following two models.  
+
+The best model that we found which included the use of all three external variables, house price index, unemployment rate, and population, was SARIMAX(1,1,5)x(2,1,3).  This model gave us an RMSE of 0.002840527.
+
+The best model we found that did not include population, but still included house price index and unemployment rate was SARIMAX(4,1,5)x(5,1,3).  This model gave us an RMSE of .002766579.  
+
+
+Our next step was to check the residual plots of these models.  Residuals are the difference between the observed values and the predicted values, and by using the SARIMAX method we are making assuptions about the residuals that need to be checked.  Both models met all assumptions and so we moved on to looking at the model complexity.   
+
+Comparing the orders of these two models it can be seen that the model that does not include population has higher values for both p and P.   A value of p = 4 compared to p = 1, means that in order to make predictions into the future, we would need to use the previous four days worth of observations as opposed to one day.  Thus, even though this second model not including population produced a slightly lower RMSE of .0027 as compared to .0028, we decided taking complexness into consideration the SARIMAX(1,1,5)x(2,1,3) is the best model.  We feel this model not only produces accurate and precise predictions, but is also significantly simpler and easier to interpret.  The results of our model's predictions against the validation set can be seen below.  
+
+```{r echo = FALSE}
+
+### Plot mytrain, validate, and prediction
+### SARIMA xreg = House_Price_Index, Unemployment_Rate, Population
+SARIMAX.bankruptcy <- arima(Bankruptcy_Rate.mytrain, order = c(1,1,5), seasonal = list(order = c(2,1,3), period = 12), method = "CSS", xreg = data.frame(House_Price_Index.mytrain, Unemployment_Rate.mytrain, Population.mytrain))
+SARIMAX.bankruptcy.pred <- predict(SARIMAX.bankruptcy, newxreg = data.frame(House_Price_Index.validate, Unemployment_Rate.validate, Population.validate), n.ahead = 60, ci = 0.95)
+
+### SARIMA xreg = House_Price_Index, Unemployment_Rate
+# SARIMAX.bankruptcy <- arima(Bankruptcy_Rate.mytrain, order = c(4,1,5), seasonal = list(order = c(5,1,3), period = 12), method = "CSS", xreg = data.frame(House_Price_Index.mytrain, Unemployment_Rate.mytrain))
+# SARIMAX.bankruptcy.pred <- predict(SARIMAX.bankruptcy, newxreg = data.frame(House_Price_Index.validate, Unemployment_Rate.validate), n.ahead = 60, ci = 0.95)
+
+# sqrt(mean((SARIMAX.bankruptcy.pred$pred - Bankruptcy_Rate.validate)^2, na.rm = TRUE ))
+# summary(SARIMAX.bankruptcy)
+# tsdiag(SARIMAX.bankruptcy)
+
+pred<-SARIMAX.bankruptcy.pred$pred #predictions
+l<-ts(SARIMAX.bankruptcy.pred$pred - 1.96 * SARIMAX.bankruptcy.pred$se, start = c(2006, 1), frequency = 12)  #95% PI LL
+h<-ts(SARIMAX.bankruptcy.pred$pred + 1.96 * SARIMAX.bankruptcy.pred$se, start = c(2006, 1), frequency = 12) #95% PI UL
+
+par(mfrow=c(1,1))
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "SARIMAX validate Monthly Bankruptcy Rate", ylab = "Bankruptcy", xlab = "Month")
+abline(v = 2006, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+legend("topleft", legend = c("Observed", "Predicted", "95% PI"), lty = 1, col = c("black", "blue", "red"), cex = 0.5)
+
+```
+
+We see that the actual observations of bankruptcy rates in Canada between 2006 and 2010 fall close to our predictions, and almost uniformly withing our 95% confidence bands.  This result confirms our choice in our model. 
+
+
+#Conclusion
+
+With our model and order chosen, we are now able to use all of the original data on bankruptcy rates, from January 1987- December 2010, to forecast the January 2011 – December 2012 bankruptcy rates.  The results of these predictions in tablular and graphical form are shown below.
+
+
+```{r echo = FALSE}
+
+
+### Plot train, test, and prediction
+### SARIMA xreg = House_Price_Index, Unemployment_Rate, Population
+SARIMAX.bankruptcy <- arima(Bankruptcy_Rate.train, order = c(1,1,5), seasonal = list(order = c(2,1,3), period = 12), method = "CSS", xreg = data.frame(House_Price_Index.train, Unemployment_Rate.train, Population.train))
+SARIMAX.bankruptcy.pred <- predict(SARIMAX.bankruptcy, newxreg = data.frame(House_Price_Index.test, Unemployment_Rate.test, Population.test), n.ahead = 24, ci = 0.95)
+
+### SARIMA xreg = House_Price_Index, Unemployment_Rate
+# SARIMAX.bankruptcy <- arima(Bankruptcy_Rate.train, order = c(4,1,5), seasonal = list(order = c(5,1,3), period = 12), method = "CSS", xreg = data.frame(House_Price_Index.train, Unemployment_Rate.train))
+# SARIMAX.bankruptcy.pred <- predict(SARIMAX.bankruptcy, newxreg = data.frame(House_Price_Index.test, Unemployment_Rate.test), n.ahead = 24, ci = 0.95)
+
+# summary(SARIMAX.bankruptcy)
+# tsdiag(SARIMAX.bankruptcy)
+
+pred<-SARIMAX.bankruptcy.pred$pred #predictions
+l<-ts(SARIMAX.bankruptcy.pred$pred - 1.96 * SARIMAX.bankruptcy.pred$se, start = c(2011, 1), frequency = 12)  #95% PI LL
+h<-ts(SARIMAX.bankruptcy.pred$pred + 1.96 * SARIMAX.bankruptcy.pred$se, start = c(2011, 1), frequency = 12) #95% PI UL
+
+par(mfrow=c(1,1))
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "SARIMAX Monthly Bankruptcy Rate", ylab = "Bankruptcy", xlab = "Month")
+abline(v = 2011, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+legend("topleft", legend = c("Observed", "Predicted", "95% PI"), lty = 1, col = c("black", "blue", "red"), cex = 0.5)
+
+
+# pred
+years = c('January 2011', 'February 2011', 'March 2011', 'April 2011', 'May 2011', 'June 2011', 'July 2011', 'August 2011', 'September 2011', 'October 2011', 'November 2011', 'December 2011','January 2012', 'February 2012', 'March 2012', 'April 2012', 'May 2012', 'June 2012', 'July 2012', 'August 2012', 'September 2012', 'October 2012', 'November 2012', 'December 2012' )
+#dfPred <- data.frame(cbind(month = years, prediction = pred, lowerPI =l, upperPI =h))
+dfPred <- data.frame(cbind(year = as.integer(time(l)), month = rep(1:12, 2), prediction = pred, lowerPI =l, upperPI =h))
+kable(dfPred)
+```
+
+Our model takes into account not only past bankruptcy rates in future predictions, but also the impact that an increase in population, housing price index, and unemployment have on bankruptcy.  With our thorough exploration through a variety of methods and models, we feel we have arrived at the model that creates precise and accurate predictions of future bankruptcy rates in Canada. 
+
+
+
+#Technical Appendix
+### 1. RMSE of validation set by using Classical Decomposition Approach, Holt Winter TES multiplicative $\alpha=0.4, \beta=0.3, \theta=0.5$, SARIMA(1,1,1)x(3,1,5), VAR(p=5).
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+dfRMSE <- data.frame(Approach = c("Classical Decomposition", "Holt Winter TES mult", "SARIMA(1,1,1)x(3,1,5)", "VAR(p=5)"), RMSE = c(0.004749869, 0.003712317, 0.003727968, 0.003822241))
+dfRMSE
+```
+
+### 2. Prediction for validation set, using Classical Decomposition Approach, Holt Winter TES multiplicative $\alpha=0.4, \beta=0.3, \theta=0.5$, SARIMA(1,1,1)x(3,1,5), VAR(p=5).
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+par(mfrow=c(2,2))
+### Classic Decomposition Approach Plot mytrain, validate, and prediction
+t <- time(Bankruptcy_Rate.mytrain)
+month <- as.factor(cycle(Bankruptcy_Rate.mytrain))
+lm_Bankruptcy_Rate.mytrain <- lm(Bankruptcy_Rate.mytrain ~ t + month)
+t.new <- time(Bankruptcy_Rate.validate)
+t.new <- as.numeric(t.new)
+month.new <- factor(1:12) # Introducing the seasonal value for forecasting
+new <- data.frame(t=t.new, month=month.new) # Putting the values for forecasting into a dataframe
+f <- predict.lm(lm_Bankruptcy_Rate.mytrain,new,interval='prediction')
+l<-ts(f[,2], start = c(2006, 1), frequency = 12)
+h<-ts(f[,3], start = c(2006, 1), frequency = 12)
+pred <- ts(f[,1], start = c(2006, 1), frequency = 12)
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "Classic Decomposition validate", ylab = "Bankruptcy_Rate", xlab = "Month")
+abline(v = 2006, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+legend("topleft", legend = c("Observed", "Predicted", "95% PI"), lty = 1, col = c("black", "blue", "red"), cex = 0.5)
+
+
+### Holt Winter Plot mytrain, validate, and prediction
+hw <- HoltWinters(x = Bankruptcy_Rate.mytrain, alpha =0.4, beta = 0.3, gamma = 0.5, seasonal = "mult")
+f<-forecast(hw, h = 84)
+l<-ts(f$lower, start = c(2006, 1), frequency = 12)
+h<-ts(f$upper, start = c(2006, 1), frequency = 12)
+pred<-f$mean
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "Holt Winters validate", ylab = "Bankruptcy_Rate", xlab = "Month")
+abline(v = 2006, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+points(f$fitted,type="l", col = "green")
+legend("topleft", legend = c("Observed", "Fitted", "Predicted", "95% PI"), lty = 1, col = c("black", "green", "blue", "red"), cex = 0.5)
+
+
+### SARIMA Plot mytrain, validate, and prediction
+SARIMA <- arima(Bankruptcy_Rate.mytrain, order = c(1,1,1), seasonal = list(order = c(3,1,5), period = 12), method = "CSS")
+f<-forecast(SARIMA, h = 84)
+l<-ts(f$lower, start = c(2006, 1), frequency = 12) 
+h<-ts(f$upper, start = c(2006, 1), frequency = 12)
+pred<-f$mean
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "SARIMA validate", ylab = "Bankruptcy_Rate", xlab = "Month")
+abline(v = 2006, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+points(f$fitted,type="l", col = "green")
+legend("topleft", legend = c("Observed", "Fitted", "Predicted", "95% PI"), lty = 1, col = c("black", "green", "blue", "red"), cex = 0.5)
+
+### VAR Plot mytrain, validate, and prediction
+var5 <- VAR(y = data.frame(Bankruptcy_Rate.mytrain, House_Price_Index.mytrain, Unemployment_Rate.mytrain, Population.mytrain), p = 5, season =12)
+fcst5 <- predict(var5, n.ahead=60, ci=0.95)
+rmse.var5 <- sqrt(mean((Bankruptcy_Rate.validate - fcst5$fcst$Bankruptcy_Rate.mytrain[,1])^2))
+pred<-ts(fcst5$fcst$Bankruptcy_Rate.mytrain[,1], start = c(2006, 1), frequency = 12) 
+l<-ts(fcst5$fcst$Bankruptcy_Rate.mytrain[,2], start = c(2006, 1), frequency = 12) 
+h<-ts(fcst5$fcst$Bankruptcy_Rate.mytrain[,3], start = c(2006, 1), frequency = 12) 
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "VAR validate", ylab = "Bankruptcy", xlab = "Month")
+abline(v = 2006, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+legend("topleft", legend = c("Observed", "Predicted", "95% PI"), lty = 1, col = c("black", "blue", "red"), cex = 0.5)
+
+```
+
+
+
+### 3. Prediction for test set, using Classical Decomposition Approach, Holt Winter TES multiplicative $\alpha=0.4, \beta=0.3, \theta=0.5$, SARIMA(1,1,1)x(3,1,5), VAR(p=5).
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+par(mfrow=c(2,2))
+### Classic Decomposition Approach Plot mytrain, validate, and prediction
+t <- time(Bankruptcy_Rate.train)
+month <- as.factor(cycle(Bankruptcy_Rate.train))
+lm_Bankruptcy_Rate.train <- lm(Bankruptcy_Rate.train ~ t + month)
+t.new <- seq(2011,2012,length=25)[1:24]
+t.new <- as.numeric(t.new)
+month.new <- factor(1:12) 
+new <- data.frame(t=t.new, month=month.new) 
+
+f <- predict.lm(lm_Bankruptcy_Rate.train,new,interval='prediction')
+l<-ts(f[,2], start = c(2011, 1), frequency = 12)
+h<-ts(f[,3], start = c(2011, 1), frequency = 12)
+pred <- ts(f[,1], start = c(2011, 1), frequency = 12)
+
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "Classic Decomposition test", ylab = "Bankruptcy_Rate", xlab = "Month")
+abline(v = 2006, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+legend("topleft", legend = c("Observed", "Predicted", "95% PI"), lty = 1, col = c("black", "blue", "red"), cex = 0.5)
+
+
+### Holt Winter Plot mytrain, validate, and prediction
+hw <- HoltWinters(x = Bankruptcy_Rate.train, alpha =0.4, beta = 0.3, gamma = 0.5, seasonal = "mult")
+f<-forecast(hw, h = 24)
+l<-ts(f$lower, start = c(2011, 1), frequency = 12)
+h<-ts(f$upper, start = c(2011, 1), frequency = 12)
+pred<-f$mean
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "Holt Winters test", ylab = "Bankruptcy_Rate", xlab = "Month")
+abline(v = 2011, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+points(f$fitted,type="l", col = "green")
+legend("topleft", legend = c("Observed", "Fitted", "Predicted", "95% PI"), lty = 1, col = c("black", "green", "blue", "red"), cex = 0.5)
+
+
+### SARIMA Plot mytrain, validate, and prediction
+SARIMA <- arima(Bankruptcy_Rate.train, order = c(1,1,1), seasonal = list(order = c(3,1,5), period = 12), method = "CSS")
+
+f<-forecast(SARIMA, h = 24)
+l<-ts(f$lower, start = c(2011, 1), frequency = 12) 
+h<-ts(f$upper, start = c(2011, 1), frequency = 12)
+pred<-f$mean
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "SARIMA test", ylab = "Bankruptcy_Rate", xlab = "Month")
+abline(v = 2011, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+points(f$fitted,type="l", col = "green")
+legend("topleft", legend = c("Observed", "Fitted", "Predicted", "95% PI"), lty = 1, col = c("black", "green", "blue", "red"), cex = 0.5)
+
+### VAR Plot mytrain, validate, and prediction
+var5 <- VAR(y = data.frame(Bankruptcy_Rate.train, House_Price_Index.train, Unemployment_Rate.train, Population.train), p = 5, season =12)
+fcst5 <- predict(var5, n.ahead=24, ci=0.95)
+
+pred<-ts(fcst5$fcst$Bankruptcy_Rate.train[,1], start = c(2011, 1), frequency = 12) #predictions
+l<-ts(fcst5$fcst$Bankruptcy_Rate.train[,2], start = c(2011, 1), frequency = 12)  #95% PI LL
+h<-ts(fcst5$fcst$Bankruptcy_Rate.train[,3], start = c(2011, 1), frequency = 12) #95% PI UL
+
+plot(Bankruptcy_Rate.train, xlim=c(1987, 2012), ylim=c(0,0.06), main = "VAR test", ylab = "Bankruptcy", xlab = "Month")
+abline(v = 2011, col = "black")
+points(pred, type = "l", col = "blue")
+points(l, type = "l", col = "red")
+points(h, type = "l", col = "red")
+legend("topleft", legend = c("Observed", "Predicted", "95% PI"), lty = 1, col = c("black", "blue", "red"), cex = 0.5)
+
+```
+
+
+
+
+
+
